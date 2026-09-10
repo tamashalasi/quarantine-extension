@@ -1,0 +1,44 @@
+{
+  "name": "quarantine-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.mjs --watch",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
+    "test:browser": "node scripts/browser-test.mjs",
+    "build": "node scripts/build.mjs",
+    "package": "pnpm build && node scripts/package.mjs",
+    "reproduce": "node scripts/reproduce.mjs",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "typecheck": "tsc --noEmit",
+    "test:firefox": "node scripts/firefox-test.mjs",
+    "release": "node scripts/release.mjs"
+  },
+  "dependencies": {
+    "tldts": "7.4.12",
+    "webextension-polyfill": "0.12.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.2.9",
+    "@types/node": "22.20.1",
+    "@types/selenium-webdriver": "4.35.6",
+    "@types/webextension-polyfill": "0.12.6",
+    "esbuild": "0.28.2",
+    "fflate": "0.8.3",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "playwright": "1.63.0",
+    "selenium-webdriver": "4.48.0",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": "24.21.0",
+    "pnpm": "12.3.4"
+  },
+  "packageManager": "pnpm@12.3.4"
+}

@@ -1,0 +1,10 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!mise.toml
+!src/**
+!scripts/**
+!build-support/**
+
+!tsconfig.json

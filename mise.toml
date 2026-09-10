@@ -1,0 +1,30 @@
+[tools]
+node = "24.21.0"
+pnpm = "12.3.4"
+
+[tasks.dev]
+run = "pnpm dev"
+[tasks.check]
+run = "pnpm check"
+[tasks.test]
+run = "pnpm test"
+[tasks.build]
+run = "pnpm build"
+[tasks.package]
+run = "pnpm package"
+[tasks.reproduce]
+run = "pnpm reproduce"
+
+[tasks.lint]
+run = "pnpm lint"
+[tasks.format]
+run = "pnpm format"
+[tasks.typecheck]
+run = "pnpm typecheck"
+[tasks."test:browser"]
+run = "pnpm test:browser"
+[tasks."test:firefox"]
+run = "pnpm test:firefox"
+
+[tasks.release]
+run = "pnpm release"
