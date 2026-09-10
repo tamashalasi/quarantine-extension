@@ -214,8 +214,16 @@ export class Coordinator {
       !this.session.settingsUnlocked
     )
       throw new Error('Unlock settings before saving.');
-    this.config = validateConfig(config);
-    this.lock();
+    const next = validateConfig(config);
+    // A changed selector must earn its own unlock; unrelated edits keep existing unlocks.
+    this.session.ruleIds = this.session.ruleIds.filter((id) => {
+      const before = this.config.rules.find((rule) => rule.id === id);
+      const after = next.rules.find((rule) => rule.id === id);
+      return before && after && before.type === after.type && before.text === after.text;
+    });
+    this.config = next;
+    this.holds.clear();
+    this.reconcile(this.tabs);
   }
   begin(tabId: number, now: number, token: string) {
     const tab = this.tabs.find((t) => t.id === tabId);

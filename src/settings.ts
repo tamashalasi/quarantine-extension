@@ -1,4 +1,5 @@
 import browser, { request } from './api';
+import { autosave } from './autosave';
 import { mountGate } from './gate';
 import { selectorTypes, validateConfig, type Config, type SelectorType, type View } from './model';
 
@@ -8,6 +9,9 @@ let gate: ReturnType<typeof mountGate> | undefined;
 let gateKey = '';
 let loaded = false;
 let refreshId = 0;
+let editing = false;
+let savedConfig = '';
+let disposeEditor: (() => void) | undefined;
 const help: Record<SelectorType, string> = {
   'Base domain': 'example.co.uk — includes subdomains; private suffixes are respected.',
   Host: 'www.example.com — exactly this hostname, on any port.',
@@ -17,13 +21,35 @@ const help: Record<SelectorType, string> = {
   Never: 'Inactive rule. Selector text is kept for later.',
 };
 function editor(config: Config) {
+  disposeEditor?.();
+  editing = false;
+  savedConfig = JSON.stringify(config);
   const draft = structuredClone(config);
-  app.innerHTML = `<header><div><div class="eyebrow">Quarantine</div><h1>Make room for intention.</h1></div><button class="secondary" id="lock" type="button">Lock everything</button></header><form><section class="card"><div class="card-head"><div><h2>A pause for the whole browser</h2><p class="description">Unlock once, until you close the browser or lock it again.</p></div><input id="global" type="checkbox" aria-label="Enable global quarantine"></div><label class="duration">Hold duration (seconds)<input id="duration" type="number" min="1" max="300" step="1" required></label><p class="hint">The same duration applies to settings, global quarantine, and every page rule.</p></section><section class="card"><div class="card-head"><div><h2>Pages to pause for</h2><p class="description">A rule stays unlocked while any matching tab remains open.</p></div><button id="add" class="secondary" type="button">Add rule</button></div><div id="rules"></div></section><div class="actions"><button class="primary" type="submit">Save &amp; lock</button><span class="hint">Saving locks every quarantine, including settings.</span></div><p id="error" class="error" role="status" aria-live="polite"></p></form><p class="footer">Private by design. Settings stay in this browser. Quarantine covers ordinary HTTP/HTTPS pages; browser settings and other protected pages remain available.</p>`;
+  app.innerHTML = `<header><div><div class="eyebrow">Quarantine</div><h1>Make room for intention.</h1></div></header><form><section class="card"><div class="card-head"><div><h2>A pause for the whole browser</h2><p class="description">Unlock once, until you close the browser or lock it again.</p></div><input id="global" type="checkbox" aria-label="Enable global quarantine"></div><label class="duration">Hold duration (seconds)<input id="duration" type="number" min="1" max="300" step="1" required></label><p class="hint">The same duration applies to settings, global quarantine, and every page rule.</p></section><section class="card"><div class="card-head"><div><h2>Pages to pause for</h2><p class="description">A rule stays unlocked while any matching tab remains open.</p></div><button id="add" class="secondary" type="button">Add rule</button></div><div id="rules"></div></section><p class="hint"><span id="save-status" role="status" aria-live="polite">All changes are saved</span></p><p id="error" class="error" role="status" aria-live="polite"></p></form><p class="footer">To lock everything, click the extension icon in the toolbar. Private by design. Settings stay in this browser. Quarantine covers ordinary HTTP/HTTPS pages; browser settings and other protected pages remain available.</p>`;
   const global = app.querySelector<HTMLInputElement>('#global')!;
   global.checked = draft.globalEnabled;
   const duration = app.querySelector<HTMLInputElement>('#duration')!;
   duration.value = String(draft.duration);
   const rules = app.querySelector<HTMLElement>('#rules')!;
+  const status = app.querySelector<HTMLElement>('#save-status')!;
+  const error = app.querySelector<HTMLElement>('#error')!;
+  const saver = autosave({
+    read: () =>
+      validateConfig({ ...draft, duration: Number(duration.value), globalEnabled: global.checked }),
+    write: async (config) => {
+      await request({ kind: 'save', tabId, config });
+      savedConfig = JSON.stringify(config);
+    },
+    status: (saving, cause) => {
+      editing = saving;
+      if (!saving) void refresh();
+      status.textContent = saving ? 'Saving...' : 'All changes are saved';
+      error.textContent = cause ? `Changes have not been saved: ${(cause as Error).message}` : '';
+    },
+  });
+  disposeEditor = saver.dispose;
+  global.onchange = saver.change;
+  duration.oninput = saver.change;
   function rows() {
     rules.replaceChildren();
     if (!draft.rules.length) {
@@ -64,9 +90,11 @@ function editor(config: Config) {
         description.textContent = help[rule.type];
         input.disabled = rule.type === 'Never';
         input.required = rule.type !== 'Never';
+        saver.change();
       };
       input.oninput = () => {
         rule.text = input.value;
+        saver.change();
       };
       textLabel.append(input, description);
       const remove = document.createElement('button');
@@ -77,6 +105,7 @@ function editor(config: Config) {
       remove.onclick = () => {
         draft.rules.splice(index, 1);
         rows();
+        saver.change();
       };
       row.append(typeLabel, textLabel, remove);
       rules.append(row);
@@ -86,27 +115,10 @@ function editor(config: Config) {
   app.querySelector<HTMLButtonElement>('#add')!.onclick = () => {
     draft.rules.push({ id: crypto.randomUUID(), type: 'Host', text: '' });
     rows();
+    saver.change();
     rules.querySelector<HTMLInputElement>('.row:last-child input')?.focus();
   };
-  app.querySelector<HTMLButtonElement>('#lock')!.onclick = () => {
-    void request({ kind: 'lock', tabId }).then(refresh).catch(showError);
-  };
-  const showError = (error: unknown) => {
-    app.querySelector('#error')!.textContent = (error as Error).message;
-  };
-  app.querySelector('form')!.onsubmit = (event) => {
-    event.preventDefault();
-    try {
-      const config = validateConfig({
-        ...draft,
-        duration: Number(duration.value),
-        globalEnabled: global.checked,
-      });
-      void request({ kind: 'save', tabId, config }).then(refresh).catch(showError);
-    } catch (error) {
-      showError(error);
-    }
-  };
+  app.querySelector('form')!.onsubmit = (event) => event.preventDefault();
 }
 async function refresh() {
   const id = ++refreshId;
@@ -116,6 +128,8 @@ async function refresh() {
     if (view.gate) {
       app.hidden = true;
       loaded = false;
+      disposeEditor?.();
+      disposeEditor = undefined;
       app.replaceChildren();
       const key = `${view.gate.id}:${view.duration}`;
       if (key !== gateKey) {
@@ -131,7 +145,7 @@ async function refresh() {
       gate?.destroy();
       gate = undefined;
       gateKey = '';
-      if (!loaded) {
+      if (!loaded || (!editing && savedConfig !== JSON.stringify(view.config))) {
         editor(view.config);
         loaded = true;
       }
@@ -139,9 +153,12 @@ async function refresh() {
     }
   } catch (error) {
     app.hidden = false;
+    disposeEditor?.();
+    loaded = false;
     app.textContent = `Unable to load Quarantine settings: ${(error as Error).message}`;
   }
 }
+window.addEventListener('pagehide', () => disposeEditor?.());
 browser.runtime.onMessage.addListener((message: unknown) => {
   if ((message as { kind?: string })?.kind === 'refresh' && tabId !== undefined) void refresh();
 });

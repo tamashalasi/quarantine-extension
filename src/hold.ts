@@ -12,6 +12,7 @@ export function holdButton(
   let disposed = false;
   let token: string | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let frame: number | undefined;
   let generation = 0;
   let pointer: number | undefined;
   let key: string | undefined;
@@ -28,6 +29,7 @@ export function holdButton(
     active = false;
     generation++;
     clearTimeout(timer);
+    if (frame !== undefined) cancelAnimationFrame(frame);
     token = undefined;
     idle();
     try {
@@ -47,20 +49,24 @@ export function holdButton(
       if (!active || generation !== current || disposed) return;
       token = result.token;
       const started = performance.now();
+      button.textContent = 'Keep holding';
+      // Rendering stays smooth even while a background heartbeat is pending.
+      const animate = () => {
+        if (!active || generation !== current || disposed) return;
+        const progress = Math.min(1, (performance.now() - started) / (result.duration * 1000));
+        button.style.setProperty('--progress', String(progress));
+        if (progress < 1) frame = requestAnimationFrame(animate);
+      };
+      frame = requestAnimationFrame(animate);
       const tick = async () => {
         if (!active || generation !== current || disposed) return;
         try {
           const elapsed = performance.now() - started;
-          const remaining = Math.max(0, result.duration - elapsed / 1000);
-          button.textContent = `Keep holding · ${remaining.toFixed(1)}s`;
-          button.style.setProperty(
-            '--progress',
-            String(Math.min(1, elapsed / (result.duration * 1000))),
-          );
-          if (remaining <= 0) {
+          if (elapsed >= result.duration * 1000) {
             const view = await request<View>({ kind: 'complete', token, tabId });
             if (!active || generation !== current || disposed) return;
             active = false;
+            if (frame !== undefined) cancelAnimationFrame(frame);
             token = undefined;
             idle();
             unlocked(view);

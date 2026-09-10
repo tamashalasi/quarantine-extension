@@ -179,7 +179,7 @@ test('hold is tied to its tab, gate, navigation and duration with heartbeat expi
   assert.throws(() => e.complete('locked', 1, 1000));
   assert.equal(e.session.globalUnlocked, false);
 });
-test('settings writes require an unlocked settings tab and lock all scopes', () => {
+test('settings writes require an unlocked settings tab and keep the editor unlocked', () => {
   const e = make([], true);
   e.reconcile([
     { id: 1, url: settings },
@@ -191,5 +191,28 @@ test('settings writes require an unlocked settings tab and lock all scopes', () 
   assert.throws(() => e.save(defaultConfig(), 2));
   e.save({ ...defaultConfig(), duration: 15 }, 1);
   assert.equal(e.config.duration, 15);
-  assert.equal(e.anyUnlocked(), false);
+  assert.equal(e.session.settingsUnlocked, true);
+  assert.equal(e.session.globalUnlocked, false);
+});
+
+test('autosaves preserve global and unchanged rule unlocks but invalidate changed selectors and holds', () => {
+  const e = make([rule('Host', 'example.com')], true);
+  e.reconcile([
+    { id: 1, url: settings },
+    { id: 2, url: 'https://example.com' },
+  ]);
+  unlock(e, 1);
+  unlock(e, 2);
+  unlock(e, 2);
+  e.save({ ...e.config, duration: 2 }, 1);
+  assert.equal(e.session.settingsUnlocked, true);
+  assert.equal(e.session.globalUnlocked, true);
+  assert.deepEqual(e.session.ruleIds, ['one']);
+  e.save({ ...e.config, rules: [rule('Base domain', 'example.com')] }, 1);
+  assert.deepEqual(e.session.ruleIds, []);
+  assert.equal(e.view(2).gate?.id, 'rule:one');
+  e.begin(2, 0, 'pending');
+  e.save({ ...e.config, duration: 3 }, 1);
+  assert.equal(e.holds.size, 0);
+  assert.equal(e.view(1).gate, null);
 });

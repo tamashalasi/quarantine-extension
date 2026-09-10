@@ -11,9 +11,10 @@ if (!scope[marker]) {
   let host: HTMLElement | undefined;
   let gateKey: string | undefined;
   let requestId = 0;
+  let hasState = false;
   let previousFocus: HTMLElement | null = null;
-  function render(view: View, pending = false) {
-    const key = pending ? 'pending' : view.gate ? `${view.gate.id}:${view.duration}` : undefined;
+  function render(view: View) {
+    const key = view.gate ? `${view.gate.id}:${view.duration}` : undefined;
     if (key === gateKey) return;
     current?.destroy();
     current = undefined;
@@ -44,14 +45,13 @@ if (!scope[marker]) {
     const id = ++requestId;
     try {
       const view = await request<View>({ kind: 'view' });
-      if (id === requestId) render(view);
+      if (id === requestId) {
+        hasState = true;
+        render(view);
+      }
     } catch {
       // Keep an existing gate closed while the extension is unavailable.
-      if (id === requestId && gateKey === 'pending') {
-        current?.destroy();
-        current = undefined;
-        host = undefined;
-        gateKey = undefined;
+      if (id === requestId && !hasState && !gateKey) {
         const view: View = {
           gate: {
             id: 'unavailable',
@@ -66,7 +66,7 @@ if (!scope[marker]) {
     }
   }
   function start() {
-    render({ gate: null, duration: 10, anyUnlocked: false }, true);
+    // Mount nothing until the coordinator confirms a gate, so unlocked pages never flash one.
     void refresh();
     new MutationObserver(() => {
       if (host && !host.isConnected) {

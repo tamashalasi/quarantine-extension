@@ -99,8 +99,15 @@ try {
   await driver
     .findElement(By.css('input[aria-label="Rule 1 selector text"]'))
     .sendKeys('127.0.0.1');
-  await driver.findElement(By.css('button[type="submit"]')).click();
-  await gated('A pause before changing things.');
+  await driver.wait(
+    async () =>
+      (await driver.findElement(By.id('save-status')).getText()) === 'All changes are saved',
+    10000,
+  );
+  assert.equal((await driver.findElements(By.css('button[type="submit"], #lock'))).length, 0);
+  await driver.navigate().refresh();
+  await editor();
+  assert.equal(await driver.findElement(By.id('duration')).getAttribute('value'), '1');
   const settingsHandle = await driver.getWindowHandle();
   await driver.switchTo().newWindow('tab');
   await driver.get(`${base}/one`);
@@ -127,11 +134,15 @@ try {
   await gated('Is this where you want to be?');
   await writeFile(join(output, 'firefox-gate.png'), await driver.takeScreenshot(), 'base64');
   await driver.switchTo().window(settingsHandle);
-  await hold(1300);
   await editor();
   await driver.navigate().refresh();
   await editor();
-  await driver.findElement(By.id('lock')).click();
+  await driver.setContext('chrome');
+  await driver.executeScript(
+    `const { CustomizableUI } = ChromeUtils.importESModule('moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs'); CustomizableUI.addWidgetToArea('quarantine_quarantine_extension-browser-action', CustomizableUI.AREA_NAVBAR);`,
+  );
+  await driver.findElement(By.id('quarantine_quarantine_extension-BAP')).click();
+  await driver.setContext('content');
   await gated('A pause before changing things.');
   await driver.switchTo().window(second);
   await gated('A moment before the internet.');

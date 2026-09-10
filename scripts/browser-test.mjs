@@ -77,7 +77,7 @@ async function hold(page, ms) {
   await page.waitForTimeout(250);
 }
 async function launch() {
-  return chromium.launchPersistentContext(profile, {
+  const launched = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
     ...(process.env.BRAVE_PATH ? { executablePath: process.env.BRAVE_PATH } : {}),
     headless: true,
@@ -88,12 +88,35 @@ async function launch() {
       '--no-sandbox',
     ],
   });
+  await launched.addInitScript(() => {
+    window.quarantineOverlayMounts = document.querySelectorAll('quarantine-overlay').length;
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes) {
+          if (node instanceof Element) {
+            window.quarantineOverlayMounts += node.matches('quarantine-overlay')
+              ? 1
+              : node.querySelectorAll('quarantine-overlay').length;
+          }
+        }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  return launched;
 }
 try {
   context = await launch();
   context.on('page', (page) => page.on('pageerror', (error) => errors.push(error.message)));
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   const id = new URL(worker.url()).host;
+  const unrestricted = await context.newPage();
+  await unrestricted.goto(`${base}/unrestricted`);
+  await unrestricted.waitForTimeout(200);
+  assert.equal(
+    await unrestricted.evaluate(() => window.quarantineOverlayMounts),
+    0,
+    'An unrestricted page flashed an overlay',
+  );
+  await unrestricted.close();
   const options = await context.newPage();
   await options.goto(`chrome-extension://${id}/settings.html`);
   await gated(options, 'A pause before changing things.');
@@ -108,14 +131,40 @@ try {
   await options.getByRole('button', { name: 'Add rule', exact: true }).click();
   await options.getByLabel('Rule 2 selector type', { exact: true }).selectOption('Starts with');
   await options.getByLabel('Rule 2 selector text', { exact: true }).fill(`${base}/pause`);
-  await options.getByRole('button', { name: 'Save & lock', exact: true }).click();
-  await gated(options, 'A pause before changing things.');
+  await waitFor(
+    async () => (await options.locator('#save-status').textContent()) === 'All changes are saved',
+    'Automatic save did not finish',
+  );
+  assert.equal(await options.locator('button[type="submit"], #lock').count(), 0);
+  await options.reload();
+  await options.locator('#duration').waitFor({ state: 'visible' });
+  assert.equal(await options.locator('#duration').inputValue(), '1');
+  assert.equal(
+    await options.getByLabel('Rule 2 selector text', { exact: true }).inputValue(),
+    `${base}/pause`,
+  );
+  // Invalid intermediate input must leave the last saved configuration intact.
+  await options.locator('#duration').fill('0');
+  await waitFor(
+    async () => (await options.locator('#error').textContent()).includes('whole number'),
+    'Missing validation error',
+  );
+  assert.equal(await options.locator('#save-status').textContent(), 'Saving...');
+  await options.locator('#duration').fill('1');
+  await waitFor(
+    async () => (await options.locator('#save-status').textContent()) === 'All changes are saved',
+    'Correction was not saved',
+  );
   const page = await context.newPage();
   await page.goto(`${base}/pause/a`);
   const second = await context.newPage();
   await second.goto(`${base}/pause/b`);
   await page.bringToFront();
   await gated(page, 'A moment before the internet.');
+  assert.ok(
+    await page.evaluate(() => window.quarantineOverlayMounts > 0),
+    'Overlay observer missed a locked gate',
+  );
   await page.screenshot({
     path: join(output, `${process.env.BRAVE_PATH ? 'brave' : 'chromium'}-gate.png`),
   });
@@ -171,6 +220,18 @@ try {
   await lifecycle.send('ServiceWorker.stopWorker', { versionId: version.versionId });
   await page.reload();
   await waitFor(async () => !(await holdNode(page)).node, 'Reload lost the page unlock');
+  assert.equal(
+    await page.evaluate(() => window.quarantineOverlayMounts),
+    0,
+    'An unlocked reload flashed an overlay',
+  );
+  await second.reload();
+  await waitFor(async () => !(await holdNode(second)).node, 'Matching tab reload lost the unlock');
+  assert.equal(
+    await second.evaluate(() => window.quarantineOverlayMounts),
+    0,
+    'A matching unlocked tab flashed an overlay',
+  );
   await page.goto(`${base}/outside`);
   await second.close();
   await page.goto(`${base}/pause/again`);
@@ -181,7 +242,6 @@ try {
   await page.evaluate(() => history.pushState({}, '', '/pause/spa'));
   await gated(page, `Starts with: ${base}/pause`);
   await options.bringToFront();
-  await hold(options, 1300);
   await options.locator('#duration').waitFor({ state: 'visible' });
   await options.reload();
   await options.locator('#duration').waitFor({ state: 'visible' });
@@ -194,7 +254,10 @@ try {
   await options2.screenshot({
     path: join(output, `${process.env.BRAVE_PATH ? 'brave' : 'chromium'}-settings.png`),
   });
-  await options2.getByRole('button', { name: 'Lock everything', exact: true }).click();
+  await options2.evaluate(async () => {
+    const tab = await chrome.tabs.getCurrent();
+    return chrome.runtime.sendMessage({ kind: 'lock', tabId: tab.id });
+  });
   await gated(options2, 'A pause before changing things.');
   await gated(page, 'A moment before the internet.');
   await hold(options2, 1300);
@@ -229,6 +292,7 @@ try {
           'global and overlapping gates',
           'cross-tab unlock',
           'reload',
+          'no overlay flashes on unrestricted or unlocked pages',
           'last matching tab',
           'SPA navigation',
           'settings lifetime',

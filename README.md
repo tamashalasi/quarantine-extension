@@ -17,9 +17,9 @@ Settings are also accessible through the browser's extension-management page or 
 
 ## How it works
 
-Hold the button with the primary mouse button, touch, or the Space/Enter key. Releasing early, changing focus, or leaving the page resets the countdown. Each quarantine requires a separate hold; global quarantine comes first, followed by matching rules in their saved order.
+Hold the button with the primary mouse button, touch, or the Space/Enter key. Releasing early, changing focus, or leaving the page resets your progress. Each quarantine requires a separate hold; global quarantine comes first, followed by matching rules in their saved order.
 
-The shared duration applies to every quarantine, including settings. It accepts whole seconds from 1 to 300. **Save & lock** applies changes and relocks everything.
+The shared duration applies to every quarantine, including settings. It accepts whole seconds from 1 to 300. Changes save automatically while settings stay unlocked. Wait for “All changes are saved” before closing the tab. To lock everything, click the extension icon in the toolbar.
 
 | Quarantine | Unlock lifetime                                                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,7 +27,7 @@ The shared duration applies to every quarantine, including settings. It accepts 
 | Page rule  | While at least one tab matching that rule remains open, across all normal windows. Closing or navigating away from the last match relocks the rule. |
 | Settings   | While at least one settings tab remains open. Closing or navigating away from the last settings tab relocks settings.                               |
 
-Switching tabs and reloading preserve completed unlocks. Matching background/discarded tabs still count as open. Browser restart, extension reload/update, or clicking the toolbar icon clears temporary unlocks. Configuration survives browser restart.
+Switching tabs and reloading preserve completed unlocks. Already-unlocked pages show no loading overlay. Matching background/discarded tabs still count as open. Browser restart, extension reload/update, or clicking the toolbar icon clears temporary unlocks. Configuration survives browser restart.
 
 **Left-click the toolbar icon to lock everything**, including open settings tabs. An amber open padlock means at least one quarantine is unlocked; a green closed padlock means none are unlocked. Unrestricted pages do not count as an unlock. The tooltip also states the status.
 
@@ -90,7 +90,7 @@ mise run test              # Selector, lifecycle, authorization, and background 
 mise run package           # Build both browser directories and deterministic ZIPs
 ```
 
-Reload the development watcher when changing manifests or build scripts. Unsaved settings edits are discarded if another tab saves settings or you lock everything.
+Reload the development watcher when changing manifests or build scripts. Incomplete or invalid edits show an error and leave the saved configuration unchanged. Locking everything discards pending edits.
 
 The background coordinator owns configuration and unlocks. Chromium uses an MV3 service worker; Firefox uses an event page. `storage.session` preserves unlocks across background suspension. The content script and options page share the same isolated dialog and hold control. Holds require continuous input, a focused tab/window, background-issued tokens, and heartbeats; navigation or locking invalidates pending tokens.
 
