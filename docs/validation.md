@@ -5,7 +5,7 @@ The initial implementation was checked on Linux on 2026-09-10.
 | Check                                          | Result                                      |
 | ---------------------------------------------- | ------------------------------------------- |
 | oxlint, oxfmt, tsc                             | Passed                                      |
-| Selector/state/background/release-script tests | 20 passed                                   |
+| Selector/state/background/release-script tests | 25 passed                                   |
 | Chromium 153.0.8010.12                         | Integration suite passed                    |
 | Brave 1.94.121                                 | Integration suite passed                    |
 | Firefox 155.0.1                                | Integration suite passed                    |

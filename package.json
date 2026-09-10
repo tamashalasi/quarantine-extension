@@ -23,16 +23,19 @@
     "webextension-polyfill": "0.12.0"
   },
   "devDependencies": {
+    "@inquirer/select": "5.2.5",
     "@types/chrome": "0.2.9",
     "@types/node": "22.20.1",
     "@types/selenium-webdriver": "4.35.6",
     "@types/webextension-polyfill": "0.12.6",
+    "commander": "15.0.0",
     "esbuild": "0.28.2",
     "fflate": "0.8.3",
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "playwright": "1.63.0",
     "selenium-webdriver": "4.48.0",
+    "semver": "7.8.5",
     "tsx": "4.23.13",
     "typescript": "7.0.2"
   },

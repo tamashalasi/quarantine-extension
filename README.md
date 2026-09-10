@@ -156,20 +156,24 @@ Dependency changes should update exact versions, the lockfile, toolchain pins wh
 Install dependencies and browser-test prerequisites above before running the release script. Run these commands from the repository root:
 
 ```sh
-mise exec -- pnpm release --tests-only   # Checks only; never tags or pushes
-mise exec -- pnpm release                # Checks, then tags and pushes
-mise exec -- pnpm release --skip-tests   # Tags and pushes without checks
+mise exec -- pnpm release --tests-only   # Checks only; no prompt or version change
+mise exec -- pnpm release                # Choose bump, check, commit, tag, and push
+mise exec -- pnpm release --skip-tests   # Choose bump, commit, tag, and push
 ```
 
 Local checks run oxlint, oxfmt, tsc, unit/background/release-script tests, packaging, Chromium and Firefox integration tests, and two clean reproducibility builds. Set `BRAVE_PATH=/path/to/brave` to include the Brave suite as well. `--tests-only` works without a Git checkout. It cannot be combined with `--skip-tests`.
 
-Before releasing, update `package.json` to the desired `X.Y.Z` version and commit all changes, including the lockfile when dependencies change. Configure a Git remote named `origin` pointing to your GitHub repository, and authenticate Git pushes. The script defaults to an annotated `vX.Y.Z` tag matching `package.json`; you can supply that tag explicitly and choose another remote:
+Before releasing, commit your existing work and configure a Git remote named `origin` pointing to your GitHub repository. The script requires an interactive terminal and asks whether to make a **patch**, **minor**, or **major** version update, with the resulting versions shown beside the choices. It prints the old and new version (for example, `Version: 0.1.0 → 0.1.1`) and updates `package.json` before running checks. You no longer need to edit the version or supply a tag yourself.
+
+After checks pass, the script commits the version bump, creates its matching annotated `vX.Y.Z` tag, and atomically pushes **only the current branch and that tag**. Choose another remote with:
 
 ```sh
-mise exec -- pnpm release --remote origin v0.1.0
+mise exec -- pnpm release --remote upstream
 ```
 
-The script requires a clean working tree and an attached branch, rejects existing local or remote tags, and verifies that HEAD did not change during testing. After checks pass, it creates the tag and atomically pushes **only the current branch and that tag**. It does not commit changes, bump versions, force-push, or push unrelated tags. A failed push keeps the local tag for inspection and retry; atomic push prevents a partial branch/tag update.
+`--skip-tests` still asks for a version bump and commits it before tagging. `--tests-only` never prompts, changes versions, commits, tags, or pushes. The script uses Commander for argument parsing, Inquirer for the selection menu, and semver for version increments. The pnpm lockfile does not record the root package version, so a version-only release does not require changing it.
+
+The script requires a clean working tree and an attached branch, rejects existing tags, and checks for concurrent changes before committing. Cancelling the prompt leaves the repository untouched. Failed tests restore the original manifest when it still contains only the script's own edit; concurrent edits or commits are preserved. A failed push keeps the release commit and local tag for inspection and retry. Resolve the push error and push that existing commit/tag rather than rerunning the version bump; atomic push prevents a partial branch/tag update. The script never force-pushes or includes unrelated tags.
 
 The tag triggers `.github/workflows/release.yml`. The workflow builds with the pinned Linux amd64 container and publishes `quarantine-chromium.zip`, `quarantine-firefox.zip`, `SHA256SUMS`, and `build-info.json` on GitHub Releases. It uploads assets to a draft before publishing; reruns can resume an incomplete draft but cannot overwrite an already published release. The workflow performs no tests—testing happens locally before tagging unless you explicitly choose `--skip-tests`.
 
